@@ -1,0 +1,22 @@
+{
+  "name": "المحول الذكي",
+  "short_name": "محول",
+  "start_url": "./index.html",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#2563eb",
+  "description": "تطبيق تحويل عملات ووحدات يعمل بدون إنترنت",
+  "icons": [
+    {
+      "src": "https://cdn-icons-png.flaticon.com/512/566/566323.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "https://cdn-icons-png.flaticon.com/512/566/566323.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}
