@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="theme-color" content="#2563eb">
+    <meta name="description" content="محول عملات ووحدات يعمل بدون إنترنت">
+    <link rel="manifest" href="manifest.json">
+    <title>المحول الذكي</title>
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+    
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Tajawal:wght@400;500;700&display=swap');
+        body { font-family: 'Tajawal', sans-serif; background-color: #f3f4f6; -webkit-tap-highlight-color: transparent; }
+        .tab-content { display: none; animation: fadeIn 0.3s ease-in-out; }
+        .tab-content.active { display: block; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+        .spin { animation: spin 1s linear infinite; }
+        @keyframes spin { 100% { transform: rotate(360deg); } }
+    </style>
+</head>
+<body class="bg-gray-100 min-h-screen flex flex-col">
+
+    <header class="bg-blue-600 text-white p-4 shadow-lg sticky top-0 z-50">
+        <div class="flex justify-between items-center container mx-auto max-w-md">
+            <h1 class="text-xl font-bold flex items-center gap-2">
+                <i data-lucide="arrow-left-right" class="w-6 h-6"></i>
+                المحول الذكي
+            </h1>
+            <div id="connectionStatus" class="bg-blue-500 px-2 py-1 rounded text-xs font-medium flex items-center gap-1">
+                <span class="w-2 h-2 rounded-full bg-green-400"></span> متصل
+            </div>
+        </div>
+    </header>
+
+    <main class="flex-grow container mx-auto max-w-md p-4 flex flex-col gap-6">
+        <nav class="bg-white p-1 rounded-xl shadow-sm flex justify-between gap-1">
+            <button onclick="switchTab('currency')" id="btn-currency" class="flex-1 py-2 rounded-lg text-sm font-bold transition-all bg-blue-100 text-blue-600">العملات</button>
+            <button onclick="switchTab('length')" id="btn-length" class="flex-1 py-2 rounded-lg text-sm font-medium text-gray-500">الأطوال</button>
+            <button onclick="switchTab('weight')" id="btn-weight" class="flex-1 py-2 rounded-lg text-sm font-medium text-gray-500">الأوزان</button>
+        </nav>
+
+        <div class="bg-white rounded-2xl shadow-lg p-6 border border-gray-100">
+            <section id="currency-section" class="tab-content active">
+                <div class="flex justify-between items-center mb-4">
+                    <h2 class="text-lg font-bold text-gray-800">تحويل العملات</h2>
+                    <button onclick="fetchRates()" id="refreshBtn" class="text-blue-600 p-2 rounded-full"><i data-lucide="refresh-cw" class="w-5 h-5"></i></button>
+                </div>
+                <p id="lastUpdated" class="text-xs text-gray-400 mb-4 text-left" dir="ltr"></p>
+                <div class="space-y-4" id="currency-inputs"></div>
+            </section>
+
+            <section id="length-section" class="tab-content"><h2 class="text-lg font-bold text-gray-800 mb-4">تحويل الطول</h2><div class="space-y-4" id="length-inputs"></div></section>
+            <section id="weight-section" class="tab-content"><h2 class="text-lg font-bold text-gray-800 mb-4">تحويل الوزن</h2><div class="space-y-4" id="weight-inputs"></div></section>
+
+            <div class="mt-8 bg-blue-50 p-4 rounded-xl border border-blue-100 text-center">
+                <p class="text-sm text-gray-500 mb-1">النتيجة</p>
+                <div class="flex items-center justify-center gap-2 flex-wrap">
+                    <span id="resultValue" class="text-3xl font-bold text-blue-700">0.00</span>
+                    <span id="resultUnit" class="text-lg font-medium text-blue-600"></span>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <footer class="text-center p-4 text-gray-400 text-sm"><p>يعمل بدون إنترنت (Offline Ready)</p></footer>
+
+    <script>
+        const lengthUnits = { m: { name: 'متر (m)', rate: 1 }, km: { name: 'كيلومتر (km)', rate: 1000 }, cm: { name: 'سنتيمتر (cm)', rate: 0.01 }, mi: { name: 'ميل (mi)', rate: 1609.34 }, ft: { name: 'قدم (ft)', rate: 0.3048 } };
+        const weightUnits = { kg: { name: 'كيلوجرام (kg)', rate: 1 }, g: { name: 'جرام (g)', rate: 0.001 }, lb: { name: 'باوند (lb)', rate: 0.453592 }, oz: { name: 'أونصة (oz)', rate: 0.0283495 } };
+        const defaultRates = { USD: 1, EUR: 0.92, GBP: 0.79, EGP: 48.5, SAR: 3.75, AED: 3.67 };
+        const currencyNames = { USD: 'دولار أمريكي', EUR: 'يورو', GBP: 'جنيه إسترليني', EGP: 'جنيه مصري', SAR: 'ريال سعودي', AED: 'درهم إماراتي' };
+
+        let state = { activeTab: 'currency', currencyRates: { ...defaultRates }, lastUpdate: null };
+
+        document.addEventListener('DOMContentLoaded', () => {
+            lucide.createIcons();
+            loadRates();
+            setupForms();
+            if ('serviceWorker' in navigator) {
+                window.addEventListener('load', () => {
+                    navigator.serviceWorker.register('./service-worker.js').catch(err => console.log('SW failed', err));
+                });
+            }
+            fetchRates();
+        });
+
+        function switchTab(tabName) {
+            state.activeTab = tabName;
+            document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
+            document.getElementById(`${tabName}-section`).classList.add('active');
+            ['currency', 'length', 'weight'].forEach(t => {
+                document.getElementById(`btn-${t}`).className = t === tabName ? "flex-1 py-2 rounded-lg text-sm font-bold bg-blue-100 text-blue-600" : "flex-1 py-2 rounded-lg text-sm font-medium text-gray-500";
+            });
+            calculate();
+        }
+
+        function createInputGroup(type, options) {
+            const container = document.getElementById(`${type}-inputs`);
+            container.innerHTML = `
+                <input type="number" id="input-${type}" value="1" class="w-full p-4 bg-gray-50 rounded-xl border border-gray-200 outline-none text-xl font-bold" oninput="calculate()">
+                <div class="grid grid-cols-[1fr,auto,1fr] gap-2 items-center mt-2">
+                    <select id="from-${type}" onchange="calculate()" class="p-3 bg-white border border-gray-200 rounded-lg">${generateOptions(options)}</select>
+                    <i data-lucide="arrow-right" class="w-5 h-5 text-gray-400"></i>
+                    <select id="to-${type}" onchange="calculate()" class="p-3 bg-white border border-gray-200 rounded-lg">${generateOptions(options)}</select>
+                </div>`;
+            lucide.createIcons();
+        }
+
+        function generateOptions(data) {
+            let html = '';
+            for (const key in data) html += `<option value="${key}">${data[key].name || (currencyNames[key] || key)}</option>`;
+            return html;
+        }
+
+        function setupForms() {
+            createInputGroup('currency', state.currencyRates);
+            createInputGroup('length', lengthUnits);
+            createInputGroup('weight', weightUnits);
+            calculate();
+        }
+
+        function calculate() {
+            const type = state.activeTab;
+            const amount = parseFloat(document.getElementById(`input-${type}`).value) || 0;
+            const from = document.getElementById(`from-${type}`).value;
+            const to = document.getElementById(`to-${type}`).value;
+            let result = 0;
+
+            if (type === 'currency') {
+                result = (amount / state.currencyRates[from]) * state.currencyRates[to];
+            } else {
+                const units = type === 'length' ? lengthUnits : weightUnits;
+                result = (amount * units[from].rate) / units[to].rate;
+            }
+            document.getElementById('resultValue').innerText = result.toLocaleString(undefined, { maximumFractionDigits: 3 });
+            document.getElementById('resultUnit').innerText = to;
+        }
+
+        async function fetchRates() {
+            const icon = document.querySelector('#refreshBtn svg');
+            icon.classList.add('spin');
+            try {
+                const res = await fetch('https://api.exchangerate-api.com/v4/latest/USD');
+                const data = await res.json();
+                state.currencyRates = data.rates;
+                state.lastUpdate = new Date().toLocaleString();
+                localStorage.setItem('rates', JSON.stringify(state.currencyRates));
+                localStorage.setItem('update', state.lastUpdate);
+                document.getElementById('lastUpdated').innerText = `آخر تحديث: ${state.lastUpdate}`;
+                calculate();
+            } catch (e) {
+                console.log("Offline or API error");
+            } finally { icon.classList.remove('spin'); }
+        }
+
+        function loadRates() {
+            const r = localStorage.getItem('rates');
+            if (r) {
+                state.currencyRates = JSON.parse(r);
+                document.getElementById('lastUpdated').innerText = `آخر تحديث: ${localStorage.getItem('update')}`;
+            }
+        }
+    </script>
+</body>
+</html>
+
+  
